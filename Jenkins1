@@ -61,6 +61,10 @@ pipeline {
                 // ✅ two additional lines added
                 echo "Selected deployment version: ${params.NEWAPP}"
                 sh "ls -l target/"
+
+                // ✅ two more lines added
+                sh "mvn verify"
+                echo "Package stage completed successfully"
             }
         }
    }
