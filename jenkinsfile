@@ -8,6 +8,16 @@ pipeline {
             }
         }
 
+        stage('Code Review') {
+            steps {
+                echo 'Running code review checks'
+                // Example commands (uncomment what you need)
+                // sh 'mvn checkstyle:check'
+                // sh 'mvn spotbugs:check'
+                // sh 'sonar-scanner'
+            }
+        }
+
         stage('Package') {
             steps {
                 echo 'Packaging the code'
