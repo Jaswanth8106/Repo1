@@ -1,51 +1,42 @@
 pipeline {
     agent none
 
-    tools{
+    tools {
         maven 'mymaven'
     }
 
-    parameters{
-        string(name: 'Env', defaultValue: 'Test', description: 'Version to deploy')
-        booleanParam(name: 'executeTests', defaultValue: true, description: 'Decide to run test cases')
+    parameters {
+        string(name: 'Env', defaultValue: 'Test', description: 'Environment name')
+        booleanParam(name: 'executeTests', defaultValue: true, description: 'Run unit tests')
         choice(name: 'APPVERSION', choices: ['1.1', '1.2', '1.3'], description: 'Select application version')
-
-    }
-    environment{
-        BUILD_SERVER='ec2-user@172.31.8.244'
-        IMAGE_NAME='devopstrainer/java-mvn-privaterepos:$BUILD_NUMBER'
-        DEPLOY_SERVER='ec2-user@172.31.0.58'
     }
 
     stages {
+
         stage('Compile') {
             agent any
             steps {
-                script{
                 echo "Compiling the code in ${params.Env} environment"
-                sh "mvn compile"
-                }
+                sh 'mvn clean compile'
             }
         }
-        stage('CodeReview') {
+
+        stage('Code Review') {
             agent any
             steps {
-                script{
-                echo 'Reviewing the code'
-                sh "mvn pmd:pmd"
-                }
+                echo 'Running static code analysis'
+                sh 'mvn pmd:pmd'
             }
         }
-        stage('UnitTest') {
+
+        stage('Unit Test') {
             agent any
-            when{
-                expression { return params.executeTests == true }
+            when {
+                expression { params.executeTests == true }
             }
             steps {
-                script{
-                echo 'Testing the code'
-                sh "mvn test"
-                }
+                echo 'Running unit tests'
+                sh 'mvn test'
             }
             post {
                 always {
@@ -53,50 +44,22 @@ pipeline {
                 }
             }
         }
-        stage('CoverageAnalysis') {
-           // agent {label 'linux_slave'}
-           agent any
-            steps {
-                script{
-                echo "Static Code Coverage Analysis of ${params.APPVERSION} version"
-                sh "mvn verify"
-            }
-        }
-        }
-        stage('Containerise the code n push the image to dockerhub') {
+
+        stage('Coverage Analysis') {
             agent any
             steps {
-                script{
-                sshagent(['slave2']) {
-                echo 'Packaging the code'
-                withCredentials([usernamePassword(credentialsId: 'docker-hub', passwordVariable: 'password', usernameVariable: 'username')]) {
-                sh "scp -o StrictHostKeyChecking=no server-script.sh ${BUILD_SERVER}:/home/ec2-user/"
-                sh "ssh -o StrictHostKeyChecking=no ${BUILD_SERVER} bash /home/ec2-user/server-script.sh ${IMAGE_NAME}"
-                sh "ssh -o StrictHostKeyChecking=no ${BUILD_SERVER} sudo docker login -u ${username} -p ${password}"
-                sh "ssh -o StrictHostKeyChecking=no ${BUILD_SERVER} sudo docker push ${IMAGE_NAME}"
-            
-                    }
-                }
+                echo "Performing code coverage analysis for version ${params.APPVERSION}"
+                sh 'mvn verify'
+            }
+        }
+
+        stage('Package') {
+            agent any
+            steps {
+                echo 'Packaging the application'
+                sh 'mvn package'
+                archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
             }
         }
     }
-     stage('Deploy the docker image') {
-            agent any
-            steps {
-                script{
-                sshagent(['slave2']) {
-                echo 'Packaging the code'
-                withCredentials([usernamePassword(credentialsId: 'docker-hub', passwordVariable: 'password', usernameVariable: 'username')]) {
-                //sh "scp -o StrictHostKeyChecking=no server-script.sh ${BUILD_SERVER}:/home/ec2-user/"
-                //sh "ssh -o StrictHostKeyChecking=no ${BUILD_SERVER} bash /home/ec2-user/server-script.sh ${IMAGE_NAME}"
-                sh "ssh -o StrictHostKeyChecking=no ${DEPLOY_SERVER} sudo yum install docker -y"
-                sh "ssh  ${DEPLOY_SERVER} sudo service docker start"
-                sh "ssh  ${DEPLOY_SERVER} sudo docker login -u ${username} -p ${password}"
-                sh "ssh  ${DEPLOY_SERVER} sudo docker run -itd -P ${IMAGE_NAME}"
-                    }
-                }
-            }
-        }
-    }
-}
 }
